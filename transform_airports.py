@@ -5,6 +5,10 @@ from collections import defaultdict
 INPUT_FILE = './allAirports.json'
 OUTPUT_FILE = './city_to_icao.json'
 
+def sanitize_city_name(city: str) -> str:
+    """Replace slashes and backslashes with underscores for Firestore document IDs"""
+    return city.replace('/', '_').replace('\\', '_')
+
 def transform_airports():
     try:
         print('📖 Reading airport data...')
@@ -35,6 +39,7 @@ def transform_airports():
         # Pick best airport per city
         city_to_icao = {}
         duplicates = 0
+        sanitized_conflicts = 0
         
         for city, airport_list in city_groups.items():
             if len(airport_list) > 1:
@@ -42,10 +47,19 @@ def transform_airports():
                 # Sort: prefer has IATA, then higher elevation
                 airport_list.sort(key=lambda x: (bool(x['iata']), x['elevation']), reverse=True)
             
-            city_to_icao[city] = airport_list[0]['icao']
+            # Sanitize city name for Firestore document ID
+            sanitized_city = sanitize_city_name(city)
+            
+            # Check for conflicts after sanitization
+            if sanitized_city in city_to_icao:
+                sanitized_conflicts += 1
+            
+            city_to_icao[sanitized_city] = airport_list[0]['icao']
         
         print(f'✅ Processed {processed:,} airports')
         print(f'⚠️  Found {duplicates:,} duplicate cities (took primary airport)')
+        if sanitized_conflicts > 0:
+            print(f'⚠️  Found {sanitized_conflicts:,} conflicts after sanitization (last one wins)')
         print(f'📊 Created {len(city_to_icao):,} city->ICAO mappings')
         
         # Write output
